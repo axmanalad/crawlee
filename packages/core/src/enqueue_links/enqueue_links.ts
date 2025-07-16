@@ -1,12 +1,13 @@
 import type { BatchAddRequestsResult, Dictionary } from '@crawlee/types';
 import { type RobotsTxtFile } from '@crawlee/utils';
 import ow from 'ow';
-import { getDomain } from 'tldts';
+import { getDomain, getSubdomain } from 'tldts';
 import type { SetRequired } from 'type-fest';
 
 import log from '@apify/log';
 
-import type { Request, RequestOptions } from '../request';
+import { Request } from '../request';
+import type { RequestOptions } from '../request';
 import type {
     AddRequestsBatchedOptions,
     AddRequestsBatchedResult,
@@ -187,6 +188,14 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * 3. or because the maxRequestsPerCrawl limit has been reached
      */
     onSkippedRequest?: SkippedRequestCallback;
+
+    /**
+     * An array of subdomain strings that should be considered equivalent when enqueuing links.
+     * For example, ['www'] will treat 'example.com' and 'www.example.com' as equivalent.
+     * If not provided, defaults to ['www'].
+     * If you provide your own array, it overrides the default.
+     */
+    equivalentSubdomains?: string[];
 }
 
 /**
@@ -310,6 +319,7 @@ export async function enqueueLinks(
             transformRequestFunction: ow.optional.function,
             strategy: ow.optional.string.oneOf(Object.values(EnqueueStrategy)),
             waitForAllRequestsToBeAdded: ow.optional.boolean,
+            equivalentSubdomains: ow.optional.array.ofType(ow.string),
         }),
     );
 
@@ -326,6 +336,7 @@ export async function enqueueLinks(
         waitForAllRequestsToBeAdded,
         robotsTxtFile,
         onSkippedRequest,
+        equivalentSubdomains = ['www'],
     } = options;
 
     const urlExcludePatternObjects: UrlPatternObject[] = [];
@@ -444,11 +455,60 @@ export async function enqueueLinks(
         await reportSkippedRequests(skippedRequests, 'filters');
     }
 
+    function areSubdomainsEquivalent(sub1: string | null, sub2: string | null, equivalents: string[]): boolean {
+        // Treat null/empty as equivalent to any in the equivalents list
+        const norm1 = sub1 || '';
+        const norm2 = sub2 || '';
+        if (norm1 === norm2) return true;
+        // If either is in the equivalents list and the other is empty, treat as equivalent
+        if ((equivalents.includes(norm1) && norm2 === '') || (equivalents.includes(norm2) && norm1 === '')) {
+            return true;
+        }
+        // If both are in the equivalents list, treat as equivalent
+        if (equivalents.includes(norm1) && equivalents.includes(norm2)) {
+            return true;
+        }
+        return false;
+    }
+
     async function createFilteredRequests() {
         const skippedRequests: string[] = [];
 
         // No user provided patterns means we can skip an extra filtering step
         if (urlPatternObjects.length === 0) {
+            // If strategy is SameHostname or SameOrigin, apply equivalentSubdomains logic
+            if (
+                options.strategy === EnqueueStrategy.SameHostname ||
+                options.strategy === EnqueueStrategy.SameOrigin ||
+                options.strategy === undefined // default is SameHostname
+            ) {
+                const baseUrl = options.baseUrl || (urls[0] ? new URL(urls[0]).origin : undefined);
+                let baseHostname = baseUrl ? new URL(baseUrl).hostname : undefined;
+                let baseDomain = baseHostname ? getDomain(baseHostname, { mixedInputs: false }) : '';
+                let baseSubdomain = baseHostname ? getSubdomain(baseHostname, { mixedInputs: false }) : '';
+                return requestOptions
+                    .filter((req) => {
+                        try {
+                            const reqHostname = new URL(req.url).hostname;
+                            const reqDomain = getDomain(reqHostname, { mixedInputs: false }) || '';
+                            if (reqDomain !== baseDomain) {
+                                skippedRequests.push(req.url);
+                                return false;
+                            }
+                            const reqSubdomain = getSubdomain(reqHostname, { mixedInputs: false });
+                            if (!areSubdomainsEquivalent(baseSubdomain || '', reqSubdomain || '', equivalentSubdomains)) {
+                                skippedRequests.push(req.url);
+                                return false;
+                            }
+                            return true;
+                        } catch {
+                            skippedRequests.push(req.url);
+                            return false;
+                        }
+                    })
+                    .map((opts) => new Request(opts));
+            }
+            // Otherwise, use the original logic
             return createRequests(
                 requestOptions,
                 enqueueStrategyPatterns,
@@ -554,4 +614,8 @@ export interface ResolveBaseUrl {
  */
 function ignoreHttpSchema(pattern: string): string {
     return pattern.replace(/^(https?):\/\//, 'http{s,}://');
+}
+
+export function hello() {
+    console.log('hello');
 }

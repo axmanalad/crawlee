@@ -515,7 +515,7 @@ export class AdaptivePlaywrightCrawler extends PlaywrightCrawler {
                                                 }
 
                                                 return await this.enqueueLinks(
-                                                    { ...options, urls },
+                                                    { ...options, urls } as SetRequired<EnqueueLinksOptions, 'urls'>,
                                                     crawlingContext.request,
                                                     result,
                                                 );
@@ -636,7 +636,7 @@ export class AdaptivePlaywrightCrawler extends PlaywrightCrawler {
                                         options.urls ??
                                         extractUrlsFromCheerio($, options.selector, options.baseUrl ?? loadedUrl);
 
-                                    return this.enqueueLinks({ ...options, urls }, crawlingContext.request, result);
+                                    return this.enqueueLinks({ ...options, urls } as SetRequired<EnqueueLinksOptions, 'urls'>, crawlingContext.request, result);
                                 },
                                 addRequests: result.addRequests,
                                 pushData: result.pushData,
