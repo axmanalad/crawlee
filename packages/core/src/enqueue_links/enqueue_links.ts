@@ -1,7 +1,7 @@
 import type { BatchAddRequestsResult, Dictionary } from '@crawlee/types';
 import { type RobotsTxtFile } from '@crawlee/utils';
 import ow from 'ow';
-import { getDomain } from 'tldts';
+import { getDomain, getSubdomain } from 'tldts';
 import type { SetRequired } from 'type-fest';
 
 import log from '@apify/log';
@@ -55,6 +55,20 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * @default false
      */
     skipNavigation?: boolean;
+
+
+    /**
+     * An array of allowed subdomains for the enqueued requests.
+     * 
+     * This option is only used when the `strategy` is set to `split-hostname`.
+     * It allows you to specify which subdomains should be considered valid when enqueuing links.
+     * 
+     * For example, if you set `allowedSubdomains: ['www', 'api']`
+     * then links like `https://www.example.com` and `https://api.example.com` will be enqueued,
+     * but links like `https://blog.example.com` will not be enqueued.
+     * @default ["www"]
+     */
+    allowedSubdomains?: readonly string[];
 
     /**
      * A base URL that will be used to resolve relative URLs when using Cheerio. Ignored when using Puppeteer,
@@ -153,19 +167,19 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * Depending on the strategy you select, we will only check certain parts of the URLs found. Here is a diagram of each URL part and their name:
      *
      * ```md
-     * Protocol          Domain
-     * ┌────┐          ┌─────────┐
+     * Protocol  Sub     Domain
+     * ┌────┐  ┌─────┐ ┌─────────┐
      * https://example.crawlee.dev/...
      * │       └─────────────────┤
      * │             Hostname    │
      * │                         │
      * └─────────────────────────┘
-     *          Origin
+    *          Origin
      *```
      *
      * @default EnqueueStrategy.SameHostname
      */
-    strategy?: EnqueueStrategy | 'all' | 'same-domain' | 'same-hostname' | 'same-origin';
+    strategy?: EnqueueStrategy | 'all' | 'same-domain' | 'same-hostname' | 'split-hostname' | 'same-origin';
 
     /**
      * By default, only the first batch (1000) of found requests will be added to the queue before resolving the call.
@@ -195,8 +209,8 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
  * Depending on the strategy you select, we will only check certain parts of the URLs found. Here is a diagram of each URL part and their name:
  *
  * ```md
- * Protocol          Domain
- * ┌────┐          ┌─────────┐
+ * Protocol  Sub     Domain
+ * ┌────┐  ┌─────┐ ┌─────────┐
  * https://example.crawlee.dev/...
  * │       └─────────────────┤
  * │             Hostname    │
@@ -224,6 +238,17 @@ export enum EnqueueStrategy {
      * > This strategy will match both `http` and `https` protocols regardless of the base URL protocol.
      */
     SameHostname = 'same-hostname',
+
+    /**
+     * Matches any URLs that have the same hostname but implements bidirectional matching for subdomains of the base URL.
+     * For example, `https://www.example.com/hello` and `https://example.com/hello` will both be matched for a base url of
+     * `https://example.com/`, but `https://wow.example.com/hello` will not be matched.
+     * Another example is `https://wow.example.com/hello` and `https://example.com/hello` will both be matched for a base url of `https://wow.example.com/`.
+     * 
+     * > This strategy will match both `http` and `https` protocols regardless of the base URL protocol.
+     * > By default, the `www` subdomain is included in the matching, but you can specify other subdomains using the `allowedSubdomains` option.
+     */
+    SplitHostname = 'split-hostname',
 
     /**
      * Matches any URLs that have the same domain as the base URL.
@@ -310,10 +335,12 @@ export async function enqueueLinks(
             transformRequestFunction: ow.optional.function,
             strategy: ow.optional.string.oneOf(Object.values(EnqueueStrategy)),
             waitForAllRequestsToBeAdded: ow.optional.boolean,
+            allowedSubdomains: ow.optional.array.ofType(ow.string),
         }),
     );
 
     const {
+        allowedSubdomains,
         requestQueue,
         limit,
         urls,
@@ -370,6 +397,37 @@ export async function enqueueLinks(
                 // absolute relative path (/path/to/page)
                 enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${url.origin}/**`) });
                 break;
+
+            case EnqueueStrategy.SplitHostname: {
+                const baseUrlSubdomain = getSubdomain(url.hostname);
+                const baseUrlDomain = getDomain(url.hostname, { mixedInputs: false });
+                const whitelist = allowedSubdomains ?? ['www'];
+                
+                // Allows the current origin
+                enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${url.origin}/**`) });
+                // If we have a base domain, check for subdomains. If subdomains are present, we will match them as well.
+                if (baseUrlDomain) {
+                    const bareUrl = new URL(url.origin);
+                    bareUrl.hostname = baseUrlDomain;
+                    enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${bareUrl.origin}/**`) });
+
+                    if (baseUrlSubdomain && !whitelist.includes(baseUrlSubdomain)) {
+                        // If the base URL subdomain is not in the whitelist, include it as a pattern
+                        const bareUrlWithSubdomain = new URL(url.origin);
+                        bareUrlWithSubdomain.hostname = `${baseUrlSubdomain}.${baseUrlDomain}`;
+                        enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${bareUrlWithSubdomain.origin}/**`) });
+                    }
+
+                    for (const subdomain of whitelist) {
+                        const subUrl = new URL(url.origin);
+                        subUrl.hostname = `${subdomain}.${baseUrlDomain}`;
+                        enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${subUrl.origin}/**`) });
+                    }
+                }
+
+                break;
+            }
+
             case EnqueueStrategy.SameDomain: {
                 // Get the actual hostname from the base url
                 const baseUrlHostname = getDomain(url.hostname, { mixedInputs: false });
@@ -528,6 +586,21 @@ export function resolveBaseUrlForEnqueueLinksFiltering({
         const finalHostname = getDomain(finalUrlOrigin, { mixedInputs: false })!;
 
         if (originalHostname === finalHostname) {
+            return finalUrlOrigin;
+        }
+
+        return undefined;
+    }
+
+    if (enqueueStrategy === EnqueueStrategy.SplitHostname) {
+        // If the user wants to ensure the same domain is accessed, regardless of subdomains, we check to ensure the domains match
+        const originalUrl = new URL(originalRequestUrl);
+        const finalUrl = new URL(finalRequestUrl ?? originalRequestUrl);
+
+        const originalDomain = getDomain(originalUrl.hostname, { mixedInputs: false });
+        const finalDomain = getDomain(finalUrl.hostname, { mixedInputs: false });
+
+        if (originalDomain === finalDomain) {
             return finalUrlOrigin;
         }
 
