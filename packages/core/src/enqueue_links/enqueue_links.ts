@@ -401,27 +401,23 @@ export async function enqueueLinks(
             case EnqueueStrategy.SplitHostname: {
                 const baseUrlSubdomain = getSubdomain(url.hostname);
                 const baseUrlDomain = getDomain(url.hostname, { mixedInputs: false });
-                const whitelist = allowedSubdomains ?? ['www'];
+                const subList = allowedSubdomains ?? ['www'];
                 
-                // Allows the current origin
+                // Allows the current origin (final)
                 enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${url.origin}/**`) });
-                // If we have a base domain, check for subdomains. If subdomains are present, we will match them as well.
+                // Allows the base domain without subdomain
                 if (baseUrlDomain) {
-                    const bareUrl = new URL(url.origin);
-                    bareUrl.hostname = baseUrlDomain;
-                    enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${bareUrl.origin}/**`) });
+                    const noSubdomainUrl = new URL(url.origin);
+                    noSubdomainUrl.hostname = baseUrlDomain;
+                    enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${noSubdomainUrl.origin}/**`) });
 
-                    if (baseUrlSubdomain && !whitelist.includes(baseUrlSubdomain)) {
-                        // If the base URL subdomain is not in the whitelist, include it as a pattern
-                        const bareUrlWithSubdomain = new URL(url.origin);
-                        bareUrlWithSubdomain.hostname = `${baseUrlSubdomain}.${baseUrlDomain}`;
-                        enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${bareUrlWithSubdomain.origin}/**`) });
-                    }
-
-                    for (const subdomain of whitelist) {
-                        const subUrl = new URL(url.origin);
-                        subUrl.hostname = `${subdomain}.${baseUrlDomain}`;
-                        enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${subUrl.origin}/**`) });
+                    for (const subdomain of subList) {
+                        // If the subdomain is not the same as the final origin's subdomain, we will add it to the patterns
+                        if (subdomain && subdomain !== baseUrlSubdomain) {
+                            const withSubdomainUrl = new URL(url.origin);
+                            withSubdomainUrl.hostname = `${subdomain}.${baseUrlDomain}`;
+                            enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${withSubdomainUrl.origin}/**`) });
+                        }
                     }
                 }
 
