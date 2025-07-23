@@ -56,13 +56,12 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      */
     skipNavigation?: boolean;
 
-
     /**
      * An array of allowed subdomains for the enqueued requests.
-     * 
+     *
      * This option is only used when the `strategy` is set to `split-hostname`.
      * It allows you to specify which subdomains should be considered valid when enqueuing links.
-     * 
+     *
      * For example, if you set `allowedSubdomains: ['www', 'api']`
      * then links like `https://www.example.com` and `https://api.example.com` will be enqueued,
      * but links like `https://blog.example.com` will not be enqueued.
@@ -244,7 +243,7 @@ export enum EnqueueStrategy {
      * For example, `https://www.example.com/hello` and `https://example.com/hello` will both be matched for a base url of
      * `https://example.com/`, but `https://wow.example.com/hello` will not be matched.
      * Another example is `https://wow.example.com/hello` and `https://example.com/hello` will both be matched for a base url of `https://wow.example.com/`.
-     * 
+     *
      * > This strategy will match both `http` and `https` protocols regardless of the base URL protocol.
      * > By default, the `www` subdomain is included in the matching, but you can specify other subdomains using the `allowedSubdomains` option.
      */
@@ -402,7 +401,7 @@ export async function enqueueLinks(
                 const baseUrlSubdomain = getSubdomain(url.hostname);
                 const baseUrlDomain = getDomain(url.hostname, { mixedInputs: false });
                 const subList = allowedSubdomains ?? ['www'];
-                
+
                 // Allows the current origin (final)
                 enqueueStrategyPatterns.push({ glob: ignoreHttpSchema(`${url.origin}/**`) });
                 // Allows the base domain without subdomain
