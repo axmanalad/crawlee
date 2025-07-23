@@ -190,12 +190,16 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
     onSkippedRequest?: SkippedRequestCallback;
 
     /**
-     * An array of subdomain strings that should be considered equivalent when enqueuing links.
-     * For example, ['www'] will treat 'example.com' and 'www.example.com' as equivalent.
+     * An array of subdomain strings that should be allowed when filtering URLs for enqueuing.
+     * This only applies when using the `SameHostname` or `SameOrigin` strategies (or when no patterns are specified).
+     * For example, ['www'] will allow both 'example.com' and 'www.example.com' to be enqueued when the base URL is either one.
      * If not provided, defaults to ['www'].
      * If you provide your own array, it overrides the default.
+     * 
+     * Note: This affects URL filtering only, not deduplication - both 'example.com/page' and 'www.example.com/page' 
+     * would still be enqueued as separate requests if found.
      */
-    equivalentSubdomains?: string[];
+    subdomainAliases?: string[];
 }
 
 /**
@@ -319,7 +323,7 @@ export async function enqueueLinks(
             transformRequestFunction: ow.optional.function,
             strategy: ow.optional.string.oneOf(Object.values(EnqueueStrategy)),
             waitForAllRequestsToBeAdded: ow.optional.boolean,
-            equivalentSubdomains: ow.optional.array.ofType(ow.string),
+            subdomainAliases: ow.optional.array.ofType(ow.string),
         }),
     );
 
@@ -336,7 +340,7 @@ export async function enqueueLinks(
         waitForAllRequestsToBeAdded,
         robotsTxtFile,
         onSkippedRequest,
-        equivalentSubdomains = ['www'],
+        subdomainAliases = ['www'],
     } = options;
 
     const urlExcludePatternObjects: UrlPatternObject[] = [];
@@ -455,17 +459,17 @@ export async function enqueueLinks(
         await reportSkippedRequests(skippedRequests, 'filters');
     }
 
-    function areSubdomainsEquivalent(sub1: string | null, sub2: string | null, equivalents: string[]): boolean {
-        // Treat null/empty as equivalent to any in the equivalents list
+    function areSubdomainsAllowed(sub1: string | null, sub2: string | null, aliases: string[]): boolean {
+        // Treat null/empty as allowed with any in the aliases list
         const norm1 = sub1 || '';
         const norm2 = sub2 || '';
         if (norm1 === norm2) return true;
-        // If either is in the equivalents list and the other is empty, treat as equivalent
-        if ((equivalents.includes(norm1) && norm2 === '') || (equivalents.includes(norm2) && norm1 === '')) {
+        // If either is in the aliases list and the other is empty, allow it
+        if ((aliases.includes(norm1) && norm2 === '') || (aliases.includes(norm2) && norm1 === '')) {
             return true;
         }
-        // If both are in the equivalents list, treat as equivalent
-        if (equivalents.includes(norm1) && equivalents.includes(norm2)) {
+        // If both are in the aliases list, allow it
+        if (aliases.includes(norm1) && aliases.includes(norm2)) {
             return true;
         }
         return false;
@@ -476,30 +480,47 @@ export async function enqueueLinks(
 
         // No user provided patterns means we can skip an extra filtering step
         if (urlPatternObjects.length === 0) {
-            // If strategy is SameHostname or SameOrigin, apply equivalentSubdomains logic
+            // If strategy is SameHostname or SameOrigin, apply subdomainAliases logic
             if (
                 options.strategy === EnqueueStrategy.SameHostname ||
                 options.strategy === EnqueueStrategy.SameOrigin ||
                 options.strategy === undefined // default is SameHostname
             ) {
-                const baseUrl = options.baseUrl || (urls[0] ? new URL(urls[0]).origin : undefined);
+                const baseUrl = options.baseUrl;
                 let baseHostname = baseUrl ? new URL(baseUrl).hostname : undefined;
                 let baseDomain = baseHostname ? getDomain(baseHostname, { mixedInputs: false }) : '';
                 let baseSubdomain = baseHostname ? getSubdomain(baseHostname, { mixedInputs: false }) : '';
+                
                 return requestOptions
                     .filter((req) => {
                         try {
-                            const reqHostname = new URL(req.url).hostname;
+                            const reqUrl = new URL(req.url);
+                            const reqHostname = reqUrl.hostname;
                             const reqDomain = getDomain(reqHostname, { mixedInputs: false }) || '';
+                            const reqSubdomain = getSubdomain(reqHostname, { mixedInputs: false }) || '';
+                            
+                            // Check domain match
                             if (reqDomain !== baseDomain) {
                                 skippedRequests.push(req.url);
                                 return false;
                             }
-                            const reqSubdomain = getSubdomain(reqHostname, { mixedInputs: false });
-                            if (!areSubdomainsEquivalent(baseSubdomain || '', reqSubdomain || '', equivalentSubdomains)) {
+                            
+                            // For SameOrigin strategy, check protocol match
+                            if (options.strategy === EnqueueStrategy.SameOrigin && baseUrl) {
+                                const baseProtocol = new URL(baseUrl).protocol;
+                                const reqProtocol = reqUrl.protocol;
+                                if (reqProtocol !== baseProtocol) {
+                                    skippedRequests.push(req.url);
+                                    return false;
+                                }
+                            }
+                            
+                            // Check subdomain match using aliases
+                            if (!areSubdomainsAllowed(baseSubdomain || '', reqSubdomain || '', subdomainAliases)) {
                                 skippedRequests.push(req.url);
                                 return false;
                             }
+                            
                             return true;
                         } catch {
                             skippedRequests.push(req.url);
@@ -614,8 +635,4 @@ export interface ResolveBaseUrl {
  */
 function ignoreHttpSchema(pattern: string): string {
     return pattern.replace(/^(https?):\/\//, 'http{s,}://');
-}
-
-export function hello() {
-    console.log('hello');
 }

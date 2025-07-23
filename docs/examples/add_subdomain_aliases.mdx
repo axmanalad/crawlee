@@ -1,0 +1,50 @@
+---
+id: add-subdomain-aliases
+title: Add subdomain aliases for flexible link crawling
+---
+
+import RunnableCodeBlock from '@site/src/components/RunnableCodeBlock';
+import ApiLink from '@site/src/components/ApiLink';
+
+import SubdomainAliasesSource from '!!raw-loader!roa-loader!./add_subdomain_aliases.ts';
+
+The `subdomainAliases` parameter in <ApiLink to="core/function/enqueueLinks">`enqueueLinks()`</ApiLink> allows you to specify which subdomains should be allowed when filtering URLs for enqueuing. For example, allow both `example.com` and `www.example.com` links to pass through the same-hostname filter.
+
+By default, `subdomainAliases: ['www']` allows both the main domain and www subdomain to be enqueued.
+
+:::info
+
+This only affects URL filtering (which URLs are allowed to be enqueued), not deduplication. Both `example.com/page` and `www.example.com/page` would still be enqueued as separate requests. Works with `SameHostname` and `SameOrigin` strategies.
+
+:::
+
+## Example
+
+<RunnableCodeBlock className="language-js" type="playwright">
+	{SubdomainAliasesSource}
+</RunnableCodeBlock>
+
+## Configuration
+
+```javascript
+// Default - www subdomain alias
+await enqueueLinks({
+    subdomainAliases: ['www'] // This is the default
+});
+
+// Multiple aliases
+await enqueueLinks({
+    subdomainAliases: ['www', 'blog', 'support']
+});
+
+// No aliases - strict matching
+await enqueueLinks({
+    subdomainAliases: []
+});
+
+// With SameOrigin strategy
+await enqueueLinks({
+    strategy: EnqueueStrategy.SameOrigin,
+    subdomainAliases: ['www', 'cdn']
+});
+```
