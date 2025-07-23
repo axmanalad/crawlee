@@ -14,7 +14,7 @@ By default, `subdomainAliases: ['www']` allows both the main domain and www subd
 
 :::info
 
-This only affects URL filtering (which URLs are allowed to be enqueued), not deduplication. Both `example.com/page` and `www.example.com/page` would still be enqueued as separate requests. Works with `SameHostname` and `SameOrigin` strategies.
+This only affects URL filtering (which URLs are allowed to be enqueued), not deduplication. Both `example.com/page` and `www.example.com/page` would still be enqueued as separate requests. Works with `SameHostname` strategy only (not with `SameOrigin` which requires exact hostname matching).
 
 :::
 
@@ -42,9 +42,10 @@ await enqueueLinks({
     subdomainAliases: []
 });
 
-// With SameOrigin strategy
+// Note: SameOrigin strategy does not use subdomainAliases
+// It requires exact hostname and protocol matching
 await enqueueLinks({
-    strategy: EnqueueStrategy.SameOrigin,
-    subdomainAliases: ['www', 'cdn']
+    strategy: EnqueueStrategy.SameOrigin
+    // subdomainAliases is ignored for SameOrigin
 });
 ```

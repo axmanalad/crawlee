@@ -114,13 +114,15 @@ await enqueueLinks({
 
 ### Subdomain aliases
 
-You can also specify which subdomains should be allowed when filtering URLs using the `subdomainAliases` parameter. By default, `www` subdomains are allowed alongside the main domain, so crawling `example.com` will also accept links to `www.example.com` for enqueuing.
+You can also specify which subdomains should be allowed when filtering URLs using the `subdomainAliases` parameter. This only works with the default `same-hostname` strategy. By default, `www` subdomains are allowed alongside the main domain, so crawling `example.com` will also accept links to `www.example.com` for enqueuing.
 
 ```ts
 await enqueueLinks({
     subdomainAliases: ['www', 'blog'] // Also allow blog.example.com to be enqueued
 });
 ```
+
+Note that `subdomainAliases` is ignored when using `same-origin` strategy, which requires exact hostname matching.
 
 When you run the code, you will see the crawler  log the **title** of the first page, then the **enqueueing** message showing number of URLs, followed by the **title** of the first enqueued page and so on and so on.
 

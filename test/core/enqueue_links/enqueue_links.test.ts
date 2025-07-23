@@ -44,6 +44,21 @@ const HTML = `
 </html>
 `;
 
+const SUBDOMAIN_HTML = `
+<html>
+    <body>
+        <a href="https://example.com/page1">Main domain HTTPS</a>
+        <a href="https://www.example.com/page2">WWW subdomain HTTPS</a>
+        <a href="https://blog.example.com/page3">Blog subdomain HTTPS</a>
+        <a href="http://example.com/page4">Main domain HTTP</a>
+        <a href="http://api.example.com/page5">WWW subdomain HTTP</a>
+        <a href="http://www.example.com/page5">WWW subdomain HTTP</a>
+        <a href="https://api.example.com/page6">API subdomain HTTPS</a>
+        <a href="https://different.com/page7">Different domain</a>
+    </body>
+</html>
+`;
+
 function createRequestQueueMock() {
     const enqueued: Source[] = [];
     const requestQueue = new RequestQueue({ id: 'xxx', client: apifyClient });
@@ -573,24 +588,10 @@ describe('enqueueLinks()', () => {
             expect(enqueued[2].userData!.foo).toBe('bar');
         });
 
-        test('works with subdomainAliases', async () => {
+        test('works with subdomainAliases for default strategy of same-hostname', async () => {
             const { enqueued, requestQueue } = createRequestQueueMock();
-            
-            // HTML with subdomain links for testing
-            const subdomainHTML = `
-                <html>
-                    <body>
-                        <a href="https://example.com/page1">Main domain</a>
-                        <a href="https://www.example.com/page2">WWW subdomain</a>
-                        <a href="https://blog.example.com/page3">Blog subdomain</a>
-                        <a href="https://api.example.com/page4">API subdomain</a>
-                        <a href="https://support.example.com/page5">Support subdomain</a>
-                        <a href="https://different.com/page6">Different domain</a>
-                    </body>
-                </html>
-            `;
-            
-            await page.setContent(subdomainHTML);
+
+            await page.setContent(SUBDOMAIN_HTML);
 
             await browserCrawlerEnqueueLinks({
                 options: {
@@ -601,7 +602,7 @@ describe('enqueueLinks()', () => {
                 originalRequestUrl: 'https://example.com',
             });
 
-            expect(enqueued).toHaveLength(3);
+            expect(enqueued).toHaveLength(5);
 
             expect(enqueued[0].url).toBe('https://example.com/page1');
             expect(enqueued[0].method).toBe('GET');
@@ -614,51 +615,14 @@ describe('enqueueLinks()', () => {
             expect(enqueued[2].url).toBe('https://blog.example.com/page3');
             expect(enqueued[2].method).toBe('GET');
             expect(enqueued[2].userData).toEqual({});
-        });
 
-        test('works with subdomainAliases using SameOrigin strategy', async () => {
-            const { enqueued, requestQueue } = createRequestQueueMock();
-            
-            // HTML with mixed protocol subdomain links for testing SameOrigin strategy
-            const subdomainHTML = `
-                <html>
-                    <body>
-                        <a href="https://example.com/page1">Main domain HTTPS</a>
-                        <a href="https://www.example.com/page2">WWW subdomain HTTPS</a>
-                        <a href="https://blog.example.com/page3">Blog subdomain HTTPS</a>
-                        <a href="http://example.com/page4">Main domain HTTP</a>
-                        <a href="http://www.example.com/page5">WWW subdomain HTTP</a>
-                        <a href="https://api.example.com/page6">API subdomain HTTPS</a>
-                        <a href="https://different.com/page7">Different domain</a>
-                    </body>
-                </html>
-            `;
-            
-            await page.setContent(subdomainHTML);
+            expect(enqueued[3].url).toBe('http://example.com/page4');
+            expect(enqueued[3].method).toBe('GET');
+            expect(enqueued[3].userData).toEqual({});
 
-            await browserCrawlerEnqueueLinks({
-                options: {
-                    strategy: EnqueueStrategy.SameOrigin,
-                    subdomainAliases: ['www', 'blog'],
-                },
-                page,
-                requestQueue,
-                originalRequestUrl: 'https://example.com',
-            });
-
-            expect(enqueued).toHaveLength(3);
-
-            expect(enqueued[0].url).toBe('https://example.com/page1');
-            expect(enqueued[0].method).toBe('GET');
-            expect(enqueued[0].userData).toEqual({});
-
-            expect(enqueued[1].url).toBe('https://www.example.com/page2');
-            expect(enqueued[1].method).toBe('GET');
-            expect(enqueued[1].userData).toEqual({});
-
-            expect(enqueued[2].url).toBe('https://blog.example.com/page3');
-            expect(enqueued[2].method).toBe('GET');
-            expect(enqueued[2].userData).toEqual({});
+            expect(enqueued[4].url).toBe('http://www.example.com/page5');
+            expect(enqueued[4].method).toBe('GET');
+            expect(enqueued[4].userData).toEqual({});
         });
     });
 
@@ -1117,22 +1081,8 @@ describe('enqueueLinks()', () => {
 
         test('works with subdomainAliases with default strategy of same-hostname', async () => {
             const { enqueued, requestQueue } = createRequestQueueMock();
-            
-            // HTML with subdomain links for testing
-            const subdomainHTML = `
-                <html>
-                    <body>
-                        <a href="https://example.com/page1">Main domain</a>
-                        <a href="https://www.example.com/page2">WWW subdomain</a>
-                        <a href="https://blog.example.com/page3">Blog subdomain</a>
-                        <a href="https://api.example.com/page4">API subdomain</a>
-                        <a href="https://support.example.com/page5">Support subdomain</a>
-                        <a href="https://different.com/page6">Different domain</a>
-                    </body>
-                </html>
-            `;
-            
-            $ = load(subdomainHTML);
+
+            $ = load(SUBDOMAIN_HTML);
 
             await cheerioCrawlerEnqueueLinks({
                 options: {
@@ -1143,7 +1093,7 @@ describe('enqueueLinks()', () => {
                 originalRequestUrl: 'https://example.com',
             });
 
-            expect(enqueued).toHaveLength(3);
+            expect(enqueued).toHaveLength(5);
 
             expect(enqueued[0].url).toBe('https://example.com/page1');
             expect(enqueued[0].method).toBe('GET');
@@ -1156,51 +1106,14 @@ describe('enqueueLinks()', () => {
             expect(enqueued[2].url).toBe('https://blog.example.com/page3');
             expect(enqueued[2].method).toBe('GET');
             expect(enqueued[2].userData).toEqual({});
-        });
 
-        test('works with subdomainAliases using SameOrigin strategy', async () => {
-            const { enqueued, requestQueue } = createRequestQueueMock();
-            
-            // HTML with mixed protocol subdomain links for testing SameOrigin strategy
-            const subdomainHTML = `
-                <html>
-                    <body>
-                        <a href="https://example.com/page1">Main domain HTTPS</a>
-                        <a href="https://www.example.com/page2">WWW subdomain HTTPS</a>
-                        <a href="https://blog.example.com/page3">Blog subdomain HTTPS</a>
-                        <a href="http://example.com/page4">Main domain HTTP</a>
-                        <a href="http://www.example.com/page5">WWW subdomain HTTP</a>
-                        <a href="https://api.example.com/page6">API subdomain HTTPS</a>
-                        <a href="https://different.com/page7">Different domain</a>
-                    </body>
-                </html>
-            `;
-            
-            $ = load(subdomainHTML);
+            expect(enqueued[3].url).toBe('http://example.com/page4');
+            expect(enqueued[3].method).toBe('GET');
+            expect(enqueued[3].userData).toEqual({});
 
-            await cheerioCrawlerEnqueueLinks({
-                options: {
-                    strategy: EnqueueStrategy.SameOrigin,
-                    subdomainAliases: ['www', 'blog'],
-                },
-                $,
-                requestQueue,
-                originalRequestUrl: 'https://example.com',
-            });
-
-            expect(enqueued).toHaveLength(3);
-
-            expect(enqueued[0].url).toBe('https://example.com/page1');
-            expect(enqueued[0].method).toBe('GET');
-            expect(enqueued[0].userData).toEqual({});
-
-            expect(enqueued[1].url).toBe('https://www.example.com/page2');
-            expect(enqueued[1].method).toBe('GET');
-            expect(enqueued[1].userData).toEqual({});
-
-            expect(enqueued[2].url).toBe('https://blog.example.com/page3');
-            expect(enqueued[2].method).toBe('GET');
-            expect(enqueued[2].userData).toEqual({});
+            expect(enqueued[4].url).toBe('http://www.example.com/page5');
+            expect(enqueued[4].method).toBe('GET');
+            expect(enqueued[4].userData).toEqual({});
         });
     });
 });
