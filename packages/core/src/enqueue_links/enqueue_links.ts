@@ -48,7 +48,12 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
     /** Sets {@apilink Request.userData} for newly enqueued requests. */
     userData?: Dictionary;
 
-    /** Sets {@apilink Request.label} for newly enqueued requests. */
+    /**
+     * Sets {@apilink Request.label} for newly enqueued requests.
+     *
+     * Note that the request options specified in `globs`, `regexps`, or `pseudoUrls` objects
+     * have priority over this option.
+     */
     label?: string;
 
     /**
@@ -83,7 +88,6 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * containing patterns matching URLs that will **never** be enqueued.
      *
      * The plain objects must include either the `glob` property or the `regexp` property.
-     * All remaining keys will be used as request options for the corresponding enqueued {@apilink Request} objects.
      *
      * Glob matching is always case-insensitive.
      * If you need case-sensitive matching, provide a regexp.
@@ -142,9 +146,8 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * }
      * ```
      *
-     * Note that `transformRequestFunction` has a priority over request options
-     * specified in `globs`, `regexps`, or `pseudoUrls` objects,
-     * and thus some options could be over-written by `transformRequestFunction`.
+     * Note that the request options specified in `globs`, `regexps`, or `pseudoUrls` objects
+     * have priority over this function. Some request options returned by `transformRequestFunction` may be overwritten by pattern-based options from `globs`, `regexps`, or `pseudoUrls`.
      */
     transformRequestFunction?: RequestTransform;
 
@@ -416,11 +419,14 @@ export async function enqueueLinks(
         }
     }
 
-    async function reportSkippedRequests(skippedRequests: { url: string }[], reason: SkippedRequestReason) {
+    async function reportSkippedRequests(
+        skippedRequests: { url: string; skippedReason?: SkippedRequestReason }[],
+        reason: SkippedRequestReason,
+    ) {
         if (onSkippedRequest && skippedRequests.length > 0) {
             await Promise.all(
                 skippedRequests.map((request) => {
-                    return onSkippedRequest({ url: request.url, reason });
+                    return onSkippedRequest({ url: request.url, reason: request.skippedReason ?? reason });
                 }),
             );
         }
