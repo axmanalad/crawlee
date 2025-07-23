@@ -572,6 +572,25 @@ describe('enqueueLinks()', () => {
             expect(enqueued[2].method).toBe('GET');
             expect(enqueued[2].userData!.foo).toBe('bar');
         });
+
+        test('handles www redirect with same-hostname strategy', async () => {
+            const { enqueued, requestQueue } = createRequestQueueMock();
+
+            await browserCrawlerEnqueueLinks({
+                options: {
+                    strategy: EnqueueStrategy.SameHostname,
+                    urls: ['https://www.example.com/a/b/first', 'https://www.example.com/a/b/third']
+                },
+                page,
+                requestQueue,
+                originalRequestUrl: 'https://example.com',
+                finalRequestUrl: 'https://www.example.com',
+            });
+
+            expect(enqueued).toHaveLength(2);
+            expect(enqueued[0].url).toBe('https://www.example.com/a/b/first');
+            expect(enqueued[1].url).toBe('https://www.example.com/a/b/third');
+        });
     });
 
     describe('using Cheerio', () => {
@@ -1025,6 +1044,25 @@ describe('enqueueLinks()', () => {
             for (let i = 0; i < 5; i++) {
                 expect(enqueued[i].options!.waitForAllRequestsToBeAdded).toBe(true);
             }
+        });
+
+        test('handles www redirect with same-hostname strategy', async () => {
+            const { enqueued, requestQueue } = createRequestQueueMock();
+
+            await cheerioCrawlerEnqueueLinks({
+                options: {
+                    strategy: EnqueueStrategy.SameHostname,
+                    urls: ['https://www.example.com/a/b/first', 'https://www.example.com/a/b/third']
+                },
+                $,
+                requestQueue,
+                originalRequestUrl: 'https://example.com',
+                finalRequestUrl: 'https://www.example.com',
+            });
+
+            expect(enqueued).toHaveLength(2);
+            expect(enqueued[0].url).toBe('https://www.example.com/a/b/first');
+            expect(enqueued[1].url).toBe('https://www.example.com/a/b/third');
         });
     });
 });
