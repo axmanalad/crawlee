@@ -579,7 +579,7 @@ describe('enqueueLinks()', () => {
             await browserCrawlerEnqueueLinks({
                 options: {
                     strategy: EnqueueStrategy.SameHostname,
-                    urls: ['https://www.example.com/a/b/first', 'https://www.example.com/a/b/third']
+                    urls: ['https://www.example.com/a/b/first', 'https://www.example.com/a/b/third'],
                 },
                 page,
                 requestQueue,
@@ -1052,7 +1052,7 @@ describe('enqueueLinks()', () => {
             await cheerioCrawlerEnqueueLinks({
                 options: {
                     strategy: EnqueueStrategy.SameHostname,
-                    urls: ['https://www.example.com/a/b/first', 'https://www.example.com/a/b/third']
+                    urls: ['https://www.example.com/a/b/first', 'https://www.example.com/a/b/third'],
                 },
                 $,
                 requestQueue,
