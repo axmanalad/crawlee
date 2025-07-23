@@ -174,7 +174,7 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * │             Hostname    │
      * │                         │
      * └─────────────────────────┘
-    *          Origin
+     *          Origin
      *```
      *
      * @default EnqueueStrategy.SameHostname
