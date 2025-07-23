@@ -468,7 +468,7 @@ export async function enqueueLinks(
      */
     function areSubdomainsAllowed(sub1: string | null, sub2: string | null, aliases: string[]): boolean {
         // Treat null/empty as allowed with any in the aliases list
-         const norm1 = sub1 || '';
+        const norm1 = sub1 || '';
         const norm2 = sub2 || '';
         if (norm1 === norm2) {
             return true;
@@ -481,7 +481,7 @@ export async function enqueueLinks(
         }
         return false;
     }
-    
+
     function isEmptyMatch(norm1: string, norm2: string, aliases: string[]): boolean {
         return (aliases.includes(norm1) && norm2 === '') || (aliases.includes(norm2) && norm1 === '');
     }
@@ -544,7 +544,7 @@ export async function enqueueLinks(
                             }
 
                             return true;
-                        } catch (error){
+                        } catch (error) {
                             skippedRequests.push(req.url);
                             return false;
                         }
