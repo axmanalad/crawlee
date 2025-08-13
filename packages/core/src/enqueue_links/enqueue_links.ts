@@ -1,12 +1,13 @@
 import type { BatchAddRequestsResult, Dictionary } from '@crawlee/types';
 import { type RobotsTxtFile } from '@crawlee/utils';
 import ow from 'ow';
-import { getDomain } from 'tldts';
+import { getDomain, getSubdomain } from 'tldts';
 import type { SetRequired } from 'type-fest';
 
 import log from '@apify/log';
 
-import type { Request, RequestOptions } from '../request';
+import type { RequestOptions } from '../request';
+import { Request } from '../request';
 import type {
     AddRequestsBatchedOptions,
     AddRequestsBatchedResult,
@@ -47,12 +48,7 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
     /** Sets {@apilink Request.userData} for newly enqueued requests. */
     userData?: Dictionary;
 
-    /**
-     * Sets {@apilink Request.label} for newly enqueued requests.
-     *
-     * Note that the request options specified in `globs`, `regexps`, or `pseudoUrls` objects
-     * have priority over this option.
-     */
+    /** Sets {@apilink Request.label} for newly enqueued requests. */
     label?: string;
 
     /**
@@ -87,6 +83,7 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * containing patterns matching URLs that will **never** be enqueued.
      *
      * The plain objects must include either the `glob` property or the `regexp` property.
+     * All remaining keys will be used as request options for the corresponding enqueued {@apilink Request} objects.
      *
      * Glob matching is always case-insensitive.
      * If you need case-sensitive matching, provide a regexp.
@@ -145,8 +142,9 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * }
      * ```
      *
-     * Note that the request options specified in `globs`, `regexps`, or `pseudoUrls` objects
-     * have priority over this function. Some request options returned by `transformRequestFunction` may be overwritten by pattern-based options from `globs`, `regexps`, or `pseudoUrls`.
+     * Note that `transformRequestFunction` has a priority over request options
+     * specified in `globs`, `regexps`, or `pseudoUrls` objects,
+     * and thus some options could be over-written by `transformRequestFunction`.
      */
     transformRequestFunction?: RequestTransform;
 
@@ -190,6 +188,18 @@ export interface EnqueueLinksOptions extends RequestQueueOperationOptions {
      * 3. or because the maxRequestsPerCrawl limit has been reached
      */
     onSkippedRequest?: SkippedRequestCallback;
+
+    /**
+     * An array of subdomain strings that should be allowed when filtering URLs for enqueuing.
+     * This only applies when using the `SameHostname` strategy (or when no patterns are specified).
+     * For example, ['www'] will allow both 'example.com' and 'www.example.com' to be enqueued when the base URL is either one.
+     * If not provided, defaults to ['www'].
+     * If you provide your own array, it overrides the default.
+     *
+     * Note: This affects URL filtering only, not deduplication - both 'example.com/page' and 'www.example.com/page'
+     * would still be enqueued as separate requests if found.
+     */
+    subdomainAliases?: readonly string[];
 }
 
 /**
@@ -313,6 +323,7 @@ export async function enqueueLinks(
             transformRequestFunction: ow.optional.function,
             strategy: ow.optional.string.oneOf(Object.values(EnqueueStrategy)),
             waitForAllRequestsToBeAdded: ow.optional.boolean,
+            subdomainAliases: ow.optional.array.ofType(ow.string),
         }),
     );
 
@@ -329,6 +340,7 @@ export async function enqueueLinks(
         waitForAllRequestsToBeAdded,
         robotsTxtFile,
         onSkippedRequest,
+        subdomainAliases = ['www'],
     } = options;
 
     const urlExcludePatternObjects: UrlPatternObject[] = [];
@@ -404,14 +416,11 @@ export async function enqueueLinks(
         }
     }
 
-    async function reportSkippedRequests(
-        skippedRequests: { url: string; skippedReason?: SkippedRequestReason }[],
-        reason: SkippedRequestReason,
-    ) {
+    async function reportSkippedRequests(skippedRequests: { url: string }[], reason: SkippedRequestReason) {
         if (onSkippedRequest && skippedRequests.length > 0) {
             await Promise.all(
                 skippedRequests.map((request) => {
-                    return onSkippedRequest({ url: request.url, reason: request.skippedReason ?? reason });
+                    return onSkippedRequest({ url: request.url, reason });
                 }),
             );
         }
@@ -450,11 +459,99 @@ export async function enqueueLinks(
         await reportSkippedRequests(skippedRequests, 'filters');
     }
 
+    /**
+     * Checks if two subdomains are allowed based on a list of aliases.
+     * @param sub1 The first subdomain to check.
+     * @param sub2 The second subdomain to check.
+     * @param aliases A list of allowed subdomain aliases.
+     * @returns True if the subdomains are allowed, false otherwise.
+     */
+    function areSubdomainsAllowed(sub1: string | null, sub2: string | null, aliases: string[]): boolean {
+        // Treat null/empty as allowed with any in the aliases list
+        const norm1 = sub1 || '';
+        const norm2 = sub2 || '';
+        if (norm1 === norm2) {
+            return true;
+        }
+        if (isEmptyMatch(norm1, norm2, aliases)) {
+            return true;
+        }
+        if (isAliasMatch(norm1, norm2, aliases)) {
+            return true;
+        }
+        return false;
+    }
+
+    function isEmptyMatch(norm1: string, norm2: string, aliases: string[]): boolean {
+        return (aliases.includes(norm1) && norm2 === '') || (aliases.includes(norm2) && norm1 === '');
+    }
+
+    function isAliasMatch(norm1: string, norm2: string, aliases: string[]): boolean {
+        return aliases.includes(norm1) && aliases.includes(norm2);
+    }
+
+    /**
+     * Creates requests based on the provided patterns and filters them according to the enqueue strategy.
+     * If no user patterns are provided, it applies the subdomain aliases logic for SameHostname strategy only.
+     */
     async function createFilteredRequests() {
         const skippedRequests: string[] = [];
 
         // No user provided patterns means we can skip an extra filtering step
         if (urlPatternObjects.length === 0) {
+            // If strategy is SameHostname, apply subdomainAliases logic
+            if (
+                options.strategy === EnqueueStrategy.SameHostname ||
+                options.strategy === undefined // default is SameHostname
+            ) {
+                // For subdomain filtering, we need a reference URL to compare against
+                // If no baseUrl is provided, we can't apply subdomain filtering, so fall back to the original logic
+                if (!options.baseUrl) {
+                    return createRequests(
+                        requestOptions,
+                        enqueueStrategyPatterns,
+                        urlExcludePatternObjects,
+                        options.strategy,
+                        (url) => skippedRequests.push(url),
+                    );
+                }
+
+                const baseUrl = options.baseUrl;
+                const baseUrlParsed = new URL(baseUrl);
+                const baseHostname = baseUrlParsed.hostname;
+                const baseDomain = getDomain(baseHostname, { mixedInputs: false }) || '';
+                const baseSubdomain = getSubdomain(baseHostname, { mixedInputs: false }) || '';
+
+                // Use subdomain aliases logic (protocol-strict) which includes both exact hostname and subdomain matches
+                return requestOptions
+                    .filter((req) => {
+                        try {
+                            const reqUrl = new URL(req.url);
+                            const reqHostname = reqUrl.hostname;
+                            const reqDomain = getDomain(reqHostname, { mixedInputs: false }) || '';
+                            const reqSubdomain = getSubdomain(reqHostname, { mixedInputs: false }) || '';
+
+                            // Check domain match
+                            if (reqDomain !== baseDomain) {
+                                skippedRequests.push(req.url);
+                                return false;
+                            }
+
+                            // Check subdomain match using aliases (this includes exact hostname match too)
+                            if (!areSubdomainsAllowed(baseSubdomain || '', reqSubdomain || '', subdomainAliases)) {
+                                skippedRequests.push(req.url);
+                                return false;
+                            }
+
+                            return true;
+                        } catch (error) {
+                            skippedRequests.push(req.url);
+                            return false;
+                        }
+                    })
+                    .map((opts) => new Request(opts));
+            }
+            // Otherwise, use the original logic
             return createRequests(
                 requestOptions,
                 enqueueStrategyPatterns,

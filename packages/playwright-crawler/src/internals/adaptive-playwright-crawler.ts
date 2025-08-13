@@ -515,7 +515,7 @@ export class AdaptivePlaywrightCrawler extends PlaywrightCrawler {
                                                 }
 
                                                 return await this.enqueueLinks(
-                                                    { ...options, urls },
+                                                    { ...options, urls } as SetRequired<EnqueueLinksOptions, 'urls'>,
                                                     crawlingContext.request,
                                                     result,
                                                 );
