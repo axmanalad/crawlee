@@ -467,6 +467,34 @@ describe('enqueueLinks()', () => {
             expect(enqueued[1].userData).toEqual({});
         });
 
+        test('correctly resolves relative URLs with the strategy of split-hostname', async () => {
+            const { enqueued, requestQueue } = createRequestQueueMock();
+            await browserCrawlerEnqueueLinks({
+                options: {
+                    baseUrl: 'http://absolute.com/removethis/',
+                    strategy: EnqueueStrategy.SplitHostname,
+                    allowedSubdomains: ['example'],
+                },
+                page,
+                requestQueue,
+                originalRequestUrl: 'https://example.com',
+            });
+
+            expect(enqueued).toHaveLength(3);
+
+            expect(enqueued[0].url).toBe('http://absolute.com/x/absolutepath');
+            expect(enqueued[0].method).toBe('GET');
+            expect(enqueued[0].userData).toEqual({});
+
+            expect(enqueued[1].url).toBe('http://absolute.com/removethis/y/relativepath');
+            expect(enqueued[1].method).toBe('GET');
+            expect(enqueued[1].userData).toEqual({});
+
+            expect(enqueued[2].url).toBe('http://example.absolute.com/hello');
+            expect(enqueued[2].method).toBe('GET');
+            expect(enqueued[2].userData).toEqual({});
+        });
+
         test('correctly resolves relative URLs with the strategy of same-domain', async () => {
             const { enqueued, requestQueue } = createRequestQueueMock();
             await browserCrawlerEnqueueLinks({
@@ -883,6 +911,34 @@ describe('enqueueLinks()', () => {
             expect(enqueued[1].url).toBe('http://www.absolute.com/removethis/y/relativepath');
             expect(enqueued[1].method).toBe('GET');
             expect(enqueued[1].userData).toEqual({});
+        });
+
+        test('correctly resolves relative URLs with the strategy of split-hostname', async () => {
+            const { enqueued, requestQueue } = createRequestQueueMock();
+            await cheerioCrawlerEnqueueLinks({
+                options: {
+                    baseUrl: 'http://absolute.com/removethis/',
+                    strategy: EnqueueStrategy.SplitHostname,
+                    allowedSubdomains: ['example'],
+                },
+                $,
+                requestQueue,
+                originalRequestUrl: 'https://example.com',
+            });
+
+            expect(enqueued).toHaveLength(3);
+
+            expect(enqueued[0].url).toBe('http://absolute.com/x/absolutepath');
+            expect(enqueued[0].method).toBe('GET');
+            expect(enqueued[0].userData).toEqual({});
+
+            expect(enqueued[1].url).toBe('http://absolute.com/removethis/y/relativepath');
+            expect(enqueued[1].method).toBe('GET');
+            expect(enqueued[1].userData).toEqual({});
+
+            expect(enqueued[2].url).toBe('http://example.absolute.com/hello');
+            expect(enqueued[2].method).toBe('GET');
+            expect(enqueued[2].userData).toEqual({});
         });
 
         test('correctly resolves relative URLs with the strategy of same-domain', async () => {

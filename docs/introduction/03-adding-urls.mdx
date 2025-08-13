@@ -114,6 +114,19 @@ await enqueueLinks({
 
 When you run the code, you will see the crawler  log the **title** of the first page, then the **enqueueing** message showing number of URLs, followed by the **title** of the first enqueued page and so on and so on.
 
+### Filtering links to specific subdomains
+
+Some websites contain links that finalizes their URL differently from the original context. Users may also like to include subdomains of their choice when enqueuing links. To include subdomains of your choice in your crawl, use the `strategy` argument with the `allowedSubdomains` argument.
+
+```ts
+await enqueueLinks({
+    strategy: 'split-hostname',
+    allowedSubdomains: ['www']
+});
+```
+
+By default, `allowedSubdomains` will handle ['www'] subdomains when using the "split-hostname" strategy. The `allowedSubdomains` argument can fulfill multiple subdomains (e.g. ['sub1', 'sub2', ..., subn]) Additionally, `allowedSubdomains` is only applicable to the "split-hostname" strategy to keep the other strategies' functionality.
+
 ## Skipping duplicate URLs
 
 Skipping of duplicate URLs is critical, because visiting the same page multiple times would lead to duplicate results. This is automatically handled by the `RequestQueue` which deduplicates requests using their `uniqueKey`. This `uniqueKey` is automatically generated from the request's URL by lowercasing the URL, lexically ordering query parameters, removing fragments and a few other tweaks that ensure the queue only includes unique URLs.
